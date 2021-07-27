@@ -103,19 +103,29 @@ func fetchMetadata(s string) error {
 
 	// site
 	metadata.Site, err = site(s)
-	cobra.CheckErr(err)
+	if err != nil {
+		return err
+	}
 	// last fetch
 	metadata.LastFetch, err = lastFetch(s)
-	cobra.CheckErr(err)
+	if err != nil {
+		return err
+	}
 	// num links
 	metadata.NumLinks, err = numLinks(s)
-	cobra.CheckErr(err)
+	if err != nil {
+		return err
+	}
 	// images
 	metadata.Images, err = images(s)
-	cobra.CheckErr(err)
+	if err != nil {
+		return err
+	}
 
 	b, err := json.Marshal(metadata)
-	cobra.CheckErr(err)
+	if err != nil {
+		return err
+	}
 	fmt.Println(string(b))
 	return nil
 }
@@ -149,14 +159,14 @@ func lastFetch(s string) (time.Time, error) {
 }
 
 func numLinks(s string) (int, error) {
-	return bfs(s, "a", "href")
+	return htmlTagCounter(s, "a", "href")
 }
 
 func images(s string) (int, error) {
-	return bfs(s, "img", "src")
+	return htmlTagCounter(s, "img", "src")
 }
 
-func bfs(s, data, key string) (int, error) {
+func htmlTagCounter(s, data, key string) (int, error) {
 	var out int
 	site, err := site(s)
 	if err != nil {
@@ -166,6 +176,7 @@ func bfs(s, data, key string) (int, error) {
 	if err != nil {
 		return out, err
 	}
+	defer f.Close()
 	doc, err := html.Parse(f)
 	if err != nil {
 		return out, nil
