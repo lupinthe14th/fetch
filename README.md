@@ -21,6 +21,29 @@ Download the binary from [GitHub Releases][release] and drop it in your `$PATH`.
 go install github.com/lupinthe14th/fetch/...
 ```
 
+## Using Docker
+
+### prerequest
+
+```
+git pull https://github.com/lupinthe14th/fetch.git
+cd fetch
+docker build -t fetch .
+docker run -it --rm fetch bash
+```
+
+### Section 1
+
+```
+fetch https://www.google.com https://example.com
+```
+
+### Section 2
+
+```
+fetch --metadata https://example.com
+```
+
 <!-- links -->
 [goreportcard]: https://goreportcard.com/report/github.com/lupinthe14th/fetch
 [release]: https://github.com/lupinthe14th/fetch/releases/latest
