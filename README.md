@@ -7,7 +7,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/lupinthe14th/fetch)][goreportcard]
 
 ## Introduction
-fetch is be able to web page and saves them to diks for later retrival and browsing for command line program.
+fetch is be able to web page and saves them to disks for later retrieval and browsing for command line program.
 
 ## Installation
 

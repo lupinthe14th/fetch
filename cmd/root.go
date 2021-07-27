@@ -36,7 +36,7 @@ type Metadata struct {
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "fetch",
-	Short: "fetch is be able to web page and saves them to diks for later retrival and browsing for command line program.",
+	Short: "fetch is be able to web page and saves them to disks for later retrieval and browsing for command line program.",
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) < 1 {
 			return errors.New("requires a urls arguments")
