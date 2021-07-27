@@ -1,25 +1,36 @@
 package cmd
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
+	"time"
 
 	"github.com/mitchellh/go-homedir"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"golang.org/x/net/html"
 )
 
 var (
-	cfgFile string
-	urls    []string
-	debug   bool
+	cfgFile  string
+	urls     []string
+	debug    bool
+	metadata bool
 )
+
+type Metadata struct {
+	Site      string    `json:"site"`
+	NumLinks  int       `json:"num_links"`
+	Images    int       `json:"images"`
+	LastFetch time.Time `json:"last_fetch"`
+}
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
@@ -40,9 +51,18 @@ var rootCmd = &cobra.Command{
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		log.Debug().Msgf("urls: %v", urls)
-		for _, url := range urls {
-			if err := fetch(url); err != nil {
-				return err
+		switch {
+		case metadata:
+			for _, url := range urls {
+				if err := fetchMetadata(url); err != nil {
+					return err
+				}
+			}
+		default:
+			for _, url := range urls {
+				if err := fetch(url); err != nil {
+					return err
+				}
 			}
 		}
 		return nil
@@ -64,6 +84,103 @@ func fetch(s string) error {
 	return ioutil.WriteFile(fmt.Sprintf("%s.html", u.Hostname()), body, 0644)
 }
 
+func fetchMetadata(s string) error {
+
+	var (
+		metadata Metadata
+		err      error
+	)
+
+	// site
+	metadata.Site, err = site(s)
+	cobra.CheckErr(err)
+	// last fetch
+	metadata.LastFetch, err = lastFetch(s)
+	cobra.CheckErr(err)
+	// num links
+	metadata.NumLinks, err = numLinks(s)
+	cobra.CheckErr(err)
+	// images
+	metadata.Images, err = images(s)
+	cobra.CheckErr(err)
+
+	b, err := json.Marshal(metadata)
+	cobra.CheckErr(err)
+	fmt.Println(string(b))
+	return nil
+}
+
+func site(s string) (string, error) {
+	u, err := url.Parse(s)
+	cobra.CheckErr(err)
+	return u.Hostname(), nil
+}
+
+func lastFetch(s string) (time.Time, error) {
+	site, err := site(s)
+	cobra.CheckErr(err)
+	f, err := os.Open(fmt.Sprintf("%s.html", site))
+	cobra.CheckErr(err)
+	fi, err := f.Stat()
+	cobra.CheckErr(err)
+
+	return fi.ModTime(), nil
+}
+
+func numLinks(s string) (int, error) {
+	var out int
+	site, err := site(s)
+	cobra.CheckErr(err)
+	f, err := os.Open(fmt.Sprintf("%s.html", site))
+	cobra.CheckErr(err)
+	doc, err := html.Parse(f)
+	cobra.CheckErr(err)
+	var bfs func(*html.Node)
+	bfs = func(n *html.Node) {
+		if n.Type == html.ElementNode && n.Data == "a" {
+			for _, a := range n.Attr {
+				if a.Key == "href" {
+					log.Debug().Msgf("a: %v", a.Val)
+					out++
+					break
+				}
+			}
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			bfs(c)
+		}
+	}
+	bfs(doc)
+	return out, nil
+}
+
+func images(s string) (int, error) {
+	var out int
+	site, err := site(s)
+	cobra.CheckErr(err)
+	f, err := os.Open(fmt.Sprintf("%s.html", site))
+	cobra.CheckErr(err)
+	doc, err := html.Parse(f)
+	cobra.CheckErr(err)
+	var bfs func(*html.Node)
+	bfs = func(n *html.Node) {
+		if n.Type == html.ElementNode && n.Data == "img" {
+			for _, a := range n.Attr {
+				if a.Key == "src" {
+					log.Debug().Msgf("img: %v", a.Val)
+					out++
+					break
+				}
+			}
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			bfs(c)
+		}
+	}
+	bfs(doc)
+	return out, nil
+}
+
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
@@ -75,6 +192,8 @@ func init() {
 
 	rootCmd.PersistentFlags().BoolVarP(&debug, "debug", "d", false, "debug mode")
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.fetch.yaml)")
+
+	rootCmd.Flags().BoolVarP(&metadata, "metadata", "m", false, "Record metadata about what was fetched.")
 }
 
 // initConfig reads in config file and ENV variables if set.
