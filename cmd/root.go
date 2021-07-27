@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -60,7 +61,7 @@ var rootCmd = &cobra.Command{
 			}
 		default:
 			for _, url := range urls {
-				if err := fetch(url); err != nil {
+				if err := fetch(context.Background(), url); err != nil {
 					return err
 				}
 			}
@@ -69,23 +70,32 @@ var rootCmd = &cobra.Command{
 	},
 }
 
-func fetch(s string) error {
+func fetch(ctx context.Context, s string) error {
 	log.Debug().Msgf("url: %s", s)
-	res, err := http.Get(s)
-	cobra.CheckErr(err)
+	u, err := url.Parse(s)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return err
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
 	defer res.Body.Close()
 
 	body, err := ioutil.ReadAll(res.Body)
-	cobra.CheckErr(err)
+	if err != nil {
+		return err
+	}
 
-	u, err := url.Parse(s)
-	cobra.CheckErr(err)
-
-	return ioutil.WriteFile(fmt.Sprintf("%s.html", u.Hostname()), body, 0644)
+	return ioutil.WriteFile(fmt.Sprintf("%s.html", u.Hostname()), body, 0600)
 }
 
 func fetchMetadata(s string) error {
-
 	var (
 		metadata Metadata
 		err      error
@@ -111,63 +121,61 @@ func fetchMetadata(s string) error {
 }
 
 func site(s string) (string, error) {
+	var out string
 	u, err := url.Parse(s)
-	cobra.CheckErr(err)
-	return u.Hostname(), nil
-}
-
-func lastFetch(s string) (time.Time, error) {
-	site, err := site(s)
-	cobra.CheckErr(err)
-	f, err := os.Open(fmt.Sprintf("%s.html", site))
-	cobra.CheckErr(err)
-	fi, err := f.Stat()
-	cobra.CheckErr(err)
-
-	return fi.ModTime(), nil
-}
-
-func numLinks(s string) (int, error) {
-	var out int
-	site, err := site(s)
-	cobra.CheckErr(err)
-	f, err := os.Open(fmt.Sprintf("%s.html", site))
-	cobra.CheckErr(err)
-	doc, err := html.Parse(f)
-	cobra.CheckErr(err)
-	var bfs func(*html.Node)
-	bfs = func(n *html.Node) {
-		if n.Type == html.ElementNode && n.Data == "a" {
-			for _, a := range n.Attr {
-				if a.Key == "href" {
-					log.Debug().Msgf("a: %v", a.Val)
-					out++
-					break
-				}
-			}
-		}
-		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			bfs(c)
-		}
+	if err != nil {
+		return out, err
 	}
-	bfs(doc)
+	out = u.Hostname()
 	return out, nil
 }
 
+func lastFetch(s string) (time.Time, error) {
+	var out time.Time
+	site, err := site(s)
+	if err != nil {
+		return out, err
+	}
+	f, err := os.Open(fmt.Sprintf("%s.html", site))
+	if err != nil {
+		return out, err
+	}
+	fi, err := f.Stat()
+	if err != nil {
+		return out, err
+	}
+	out = fi.ModTime()
+	return out, nil
+}
+
+func numLinks(s string) (int, error) {
+	return bfs(s, "a", "href")
+}
+
 func images(s string) (int, error) {
+	return bfs(s, "img", "src")
+}
+
+func bfs(s, data, key string) (int, error) {
 	var out int
 	site, err := site(s)
-	cobra.CheckErr(err)
+	if err != nil {
+		return out, err
+	}
 	f, err := os.Open(fmt.Sprintf("%s.html", site))
-	cobra.CheckErr(err)
+	if err != nil {
+		return out, err
+	}
 	doc, err := html.Parse(f)
-	cobra.CheckErr(err)
+	if err != nil {
+		return out, nil
+	}
 	var bfs func(*html.Node)
 	bfs = func(n *html.Node) {
-		if n.Type == html.ElementNode && n.Data == "img" {
+		if n.Type == html.ElementNode && n.Data == data {
 			for _, a := range n.Attr {
-				if a.Key == "src" {
-					log.Debug().Msgf("img: %v", a.Val)
+				if a.Key == key {
+					log.Debug().Msgf("%s: %s", data, a.Val)
 					out++
 					break
 				}
